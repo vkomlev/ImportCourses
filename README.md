@@ -1,6 +1,21 @@
-# Парсер курсов с сайта victor-komlev.ru
+# ParseCourse — парсер курсов с сайта victor-komlev.ru
 
-Python-приложение для парсинга структуры курсов с сайта victor-komlev.ru и генерации XLSX файла для последующего импорта в LMS через Google Sheets API.
+Python-приложение для парсинга иерархической структуры курсов с сайта victor-komlev.ru и генерации XLSX файла для последующего импорта в LMS (через Google Sheets API или загрузку таблицы).
+
+---
+
+## Анализ проекта
+
+| Аспект | Описание |
+|--------|----------|
+| **Назначение** | Извлечение структуры курсов (главная страница → подкурсы уровня 1 → подкурсы уровня 2) из HTML и экспорт в формат, совместимый с импортом в LMS. |
+| **Вход** | URL главной страницы курса (например, victor-komlev.ru). |
+| **Выход** | XLSX-файл с колонками `course_uid`, `title`, `description`, `access_level`, `parent_course_uid`, `order_number`, `required_courses_uid`, `is_required`. |
+| **Стек** | Python 3, requests, BeautifulSoup4, openpyxl, transliterate; тесты — pytest. |
+| **Архитектура** | Модули: `parser` (HTML), `uid_generator` (транслит + slug), `excel_writer` (XLSX), `main` (оркестрация и CLI). Конфигурация в `config.py`. |
+| **Зависимости** | Внешний сайт (доступ по HTTP), локальная запись в `output/`. Документация по импорту в LMS — в `docs/courses-import-manual.md`. |
+
+---
 
 ## Описание
 
@@ -62,7 +77,7 @@ python run.py --url https://victor-komlev.ru/python-dlya-ege-navigator-po-kursu/
 
 - `--url` (обязательно) - URL главной страницы курса
 - `--output` (опционально) - путь к выходному XLSX файлу (по умолчанию: `output/courses_<timestamp>.xlsx`)
-- `--main-uid` (опционально) - UID главного курса (по умолчанию: `PYTHON-EGE-MAIN` из config.py)
+- `--main-uid` (опционально) - UID главного курса (по умолчанию: `PY` из config.py)
 - `--verbose` (опционально) - включить подробное логирование (DEBUG уровень)
 
 ## Структура проекта
@@ -87,20 +102,21 @@ ParseCourse/
 
 XLSX файл содержит следующие колонки (согласно [мануалу импорта](docs/courses-import-manual.md)):
 
-1. `course_uid` - уникальный код курса (обязательно)
-2. `title` - название курса (обязательно)
-3. `description` - описание (опционально, может быть пустым)
-4. `access_level` - уровень доступа (обязательно, по умолчанию: `manual_check`)
-5. `parent_course_uid` - код родительского курса (опционально, пусто для корневых курсов)
-6. `required_courses_uid` - зависимости через запятую (опционально, по умолчанию пусто)
-7. `is_required` - обязательность курса (опционально, по умолчанию: `false`)
+1. `course_uid` — уникальный код курса (обязательно)
+2. `title` — название курса (обязательно)
+3. `description` — описание (опционально, может быть пустым)
+4. `access_level` — уровень доступа (обязательно, по умолчанию: `manual_check`)
+5. `parent_course_uid` — код родительского курса (опционально, пусто для корневых курсов)
+6. `order_number` — порядковый номер подкурса у родителя (опционально, целое число)
+7. `required_courses_uid` — зависимости через запятую (опционально, по умолчанию пусто)
+8. `is_required` — обязательность курса (опционально, по умолчанию: `false`)
 
 ### Пример структуры данных
 
-| course_uid | title | description | access_level | parent_course_uid | required_courses_uid | is_required |
-|------------|-------|-------------|--------------|-------------------|---------------------|-------------|
-| PYTHON-EGE-MAIN-osnovy-python | Основы Python | Введение в Python | manual_check | PYTHON-EGE-MAIN | | false |
-| PYTHON-EGE-MAIN-osnovy-python-pervaya-programma | Первая программа на Python | ... | manual_check | PYTHON-EGE-MAIN-osnovy-python | | false |
+| course_uid | title | description | access_level | parent_course_uid | order_number | required_courses_uid | is_required |
+|------------|-------|-------------|--------------|-------------------|--------------|---------------------|-------------|
+| PY-osnovy-python | Основы Python | Введение в Python | manual_check | PY | 1 | | false |
+| PY-osnovy-python-pervaya-programma | Первая программа на Python | ... | manual_check | PY-osnovy-python | 1 | | false |
 
 ### Генерация UID
 
@@ -112,15 +128,15 @@ UID генерируется автоматически по следующим 
 
 Примеры:
 - "Основы Python" → `osnovy-python`
-- Родитель: `PYTHON-EGE-MAIN` → `PYTHON-EGE-MAIN-osnovy-python`
-- Подкурс: `PYTHON-EGE-MAIN-osnovy-python` → `PYTHON-EGE-MAIN-osnovy-python-pervaya-programma`
+- Родитель: `PY` → `PY-osnovy-python`
+- Подкурс: `PY-osnovy-python` → `PY-osnovy-python-pervaya-programma`
 
 ## Конфигурация
 
 Настройки можно изменить в файле `src/config.py`:
 
 ### Основные настройки
-- `MAIN_COURSE_UID` - UID главного курса (по умолчанию: `"PYTHON-EGE-MAIN"`)
+- `MAIN_COURSE_UID` — UID главного курса (по умолчанию: `"PY"`)
 - `DEFAULT_ACCESS_LEVEL` - уровень доступа по умолчанию (по умолчанию: `"manual_check"`)
 
 ### Настройки парсинга
