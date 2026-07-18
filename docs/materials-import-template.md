@@ -2,8 +2,9 @@
 
 ## Файл
 
-- **Файл:** `materials_import_template.xlsx` (в корне проекта)
-- **Генерация:** `python tests/generate_materials_import_xlsx.py` (нужен `pip install openpyxl`)
+- **Файл:** `materials_import_template.xlsx` (задуман в корне проекта).
+- **Статус:** ни файл, ни генерирующий его скрипт (`tests/generate_materials_import_xlsx.py`) в репозитории на данный момент не существуют — этот документ описывает целевой формат шаблона, а не готовый к использованию артефакт. Реальный XLSX материалов создаётся парсером через `python -m src.excel_writer` (см. `write_materials_to_excel` в `src/excel_writer.py`) при запуске `run.py`, а не отдельным генератором шаблона.
+- Если статичный шаблон-образец для ручного заполнения (без запуска парсера) нужен — заведите отдельную задачу на создание `tests/generate_materials_import_xlsx.py`.
 
 ## Структура листа
 
@@ -23,20 +24,11 @@
 | order_position   | ⚪          | Позиция в курсе (целое ≥ 1; пусто = в конец) |
 | is_active        | ⚪          | true/false, 1/0, да/нет |
 
-## Пример данных в шаблоне
+## Использование файла материалов
 
-В сгенерированном файле уже есть примеры строк для курсов **COURSE-PY-01** и **COURSE-MATH-01** (типы: link, video, text, pdf). После проверки и правок:
+После запуска парсера (`python run.py --url ...`) файл материалов появляется в `output/materials_<timestamp>.xlsx` с колонками, описанными выше. Дальнейшие шаги:
 
-1. Откройте файл в Excel/LibreOffice, при необходимости отредактируйте.
+1. Откройте файл в Excel/LibreOffice, при необходимости отредактируйте (`description`, `caption` парсер оставляет пустыми).
 2. Загрузите содержимое в Google Таблицы (Файл → Импорт → Загрузить или копирование листа).
-3. Убедитесь, что первый лист называется **Materials** (или укажите его имя в API в поле `sheet_name`).
-4. Вызовите импорт: `POST /api/v1/materials/import/google-sheets` с `spreadsheet_url` вашей Google-таблицы.
-
-## Повторная генерация шаблона
-
-```bash
-pip install openpyxl
-python tests/generate_materials_import_xlsx.py
-```
-
-Файл будет перезаписан: `materials_import_template.xlsx`.
+3. Убедитесь, что лист называется **Materials** (парсер называет его так по умолчанию; при переименовании укажите имя в API в поле `sheet_name`).
+4. Вызовите импорт: `POST /api/v1/materials/import/google-sheets` с `spreadsheet_url` вашей Google-таблицы (см. [materials-api.md](materials-api.md)).
