@@ -51,3 +51,5 @@ logs/
 Thumbs.db
 .cursor/*
 !.cursor/rules/
+# Claude Code: локальные настройки агента, не репозиторий.
+.claude/
