@@ -1,9 +1,10 @@
 """Парсинг HTML страниц курсов"""
 
 import logging
+import re
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -11,6 +12,8 @@ from bs4 import BeautifulSoup
 
 from .config import (
     GO_LINK_TEXT,
+    MATERIALS_HEADER_TEXT_LESSONS,
+    MATERIALS_HEADER_VIDEO_LESSONS,
     PLAN_SECTION_HEADER,
     REQUEST_TIMEOUT,
     RETRY_ATTEMPTS,
@@ -31,6 +34,15 @@ class Subcourse:
     description: Optional[str] = None
     parent_uid: Optional[str] = None
     level: int = 1  # 1 - первый уровень, 2 - второй уровень
+
+
+@dataclass
+class RawMaterial:
+    """Сырой материал со страницы подкурса (до привязки к course_uid)"""
+
+    title: str
+    url: str
+    material_type: str  # "text" | "video"
 
 
 class CourseParser:
@@ -166,22 +178,36 @@ class CourseParser:
 
         return None
 
-    def parse_subcourse_page(self, url: str) -> List[Subcourse]:
+    def parse_subcourse_page(self, url: str, soup: Optional[BeautifulSoup] = None) -> List[Subcourse]:
         """
         Парсинг страницы подкурса
 
-        Извлекает список (нумерованный или маркированный) под любым заголовком
+        Извлекает список (нумерованный или маркированный) под любым заголовком.
 
         Args:
             url: URL страницы подкурса
+            soup: Уже загруженная страница (если None, загружается по url)
 
         Returns:
             Список подкурсов второго уровня
         """
-        soup = self._fetch_page(url)
+        if soup is None:
+            soup = self._fetch_page(url)
         if not soup:
             return []
+        return self._parse_subcourse_page_content(soup, url)
 
+    def _parse_subcourse_page_content(self, soup: BeautifulSoup, url: str) -> List[Subcourse]:
+        """
+        Извлечение подкурсов второго уровня из уже загруженной страницы.
+
+        Args:
+            soup: BeautifulSoup объект страницы
+            url: URL страницы (для логирования)
+
+        Returns:
+            Список подкурсов второго уровня
+        """
         # Сначала пытаемся найти список по стандартному заголовку "Краткий план раздела"
         plan_section = self._find_plan_section(soup)
         if plan_section:
@@ -197,6 +223,113 @@ class CourseParser:
 
         logger.warning(f"Не найден список на странице {url}")
         return []
+
+    def _find_section_by_header(self, soup: BeautifulSoup, header_text: str):
+        """
+        Поиск заголовка секции по частичному совпадению текста (в т.ч. вложенные span).
+
+        Args:
+            soup: BeautifulSoup объект страницы
+            header_text: Текст заголовка (например, «Текстовые уроки»)
+
+        Returns:
+            Элемент заголовка или None
+        """
+        needle = (header_text or "").strip().lower()
+        if not needle:
+            return None
+        for tag_name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+            for tag in soup.find_all(tag_name):
+                text = (tag.get_text(strip=True) or "").lower()
+                if needle in text:
+                    return tag
+        return None
+
+    def _get_links_after_header(self, header_element, base_url: str) -> List[Tuple[str, str]]:
+        """
+        Сбор ссылок (текст, href) в элементах после заголовка до следующего заголовка того же уровня.
+
+        Args:
+            header_element: Элемент заголовка
+            base_url: URL страницы для преобразования относительных ссылок
+
+        Returns:
+            Список пар (текст ссылки, url)
+        """
+        if not header_element:
+            return []
+        header_level = int(header_element.name[1]) if header_element.name and header_element.name[0] == "h" else 6
+        result = []
+        current = header_element
+        for _ in range(60):
+            if hasattr(current, "next_sibling"):
+                current = current.next_sibling
+            else:
+                break
+            if current is None:
+                break
+            if not hasattr(current, "name"):
+                continue
+            if current.name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+                next_level = int(current.name[1])
+                if next_level <= header_level:
+                    break
+            if hasattr(current, "find_all"):
+                for a in current.find_all("a", href=True):
+                    href = a.get("href", "").strip()
+                    if not href or href.startswith("#"):
+                        continue
+                    text = a.get_text(separator=" ", strip=True)
+                    if not text:
+                        continue
+                    full_url = urljoin(base_url, href)
+                    result.append((text, full_url))
+        return result
+
+    def parse_materials_sections(self, soup: BeautifulSoup, page_url: str) -> List[RawMaterial]:
+        """
+        Извлечение материалов из секций «Текстовые уроки» и «Видеоуроки» на странице подкурса.
+
+        Args:
+            soup: BeautifulSoup объект страницы
+            page_url: URL страницы (для абсолютных ссылок)
+
+        Returns:
+            Список RawMaterial (title, url, material_type)
+        """
+        materials = []
+        for header_text, mat_type in [
+            (MATERIALS_HEADER_TEXT_LESSONS, "text"),
+            (MATERIALS_HEADER_VIDEO_LESSONS, "video"),
+        ]:
+            section = self._find_section_by_header(soup, header_text)
+            if not section:
+                logger.debug(f"Секция «{header_text}» не найдена на {page_url}")
+                continue
+            links = self._get_links_after_header(section, page_url)
+            for text, url in links:
+                materials.append(RawMaterial(title=text, url=url, material_type=mat_type))
+            logger.info(f"Секция «{header_text}»: найдено ссылок {len(links)}")
+        return materials
+
+    def parse_subcourse_page_with_materials(self, url: str) -> Tuple[List[Subcourse], List[RawMaterial]]:
+        """
+        Парсинг страницы подкурса: подкурсы второго уровня и материалы из секций уроков.
+
+        Один запрос к странице, возвращает и список подкурсов, и список материалов.
+
+        Args:
+            url: URL страницы подкурса
+
+        Returns:
+            (список Subcourse уровня 2, список RawMaterial)
+        """
+        soup = self._fetch_page(url)
+        if not soup:
+            return [], []
+        subcourses = self._parse_subcourse_page_content(soup, url)
+        materials = self.parse_materials_sections(soup, url)
+        return subcourses, materials
 
     def _extract_list_items(self, list_element, url: str) -> List[Subcourse]:
         """
@@ -226,41 +359,6 @@ class CourseParser:
                 title = self._clean_list_item_title(title)
                 
                 # Нормализуем пробелы (множественные пробелы -> один)
-                import re
-                title = re.sub(r'\s+', ' ', title)
-                # Убираем пробелы перед знаками препинания
-                title = re.sub(r'\s+([.,:;!?])', r'\1', title)
-                title = title.strip()
-
-                if not title:
-                    continue
-
-                subcourse = Subcourse(
-                    title=title,
-                    level=2,
-                )
-                subcourses.append(subcourse)
-                logger.debug(f"Найден подкурс уровня 2: {title}")
-
-            except Exception as e:
-                logger.error(f"Ошибка при обработке элемента списка: {e}")
-                continue
-
-        return subcourses
-
-        for item in list_items:
-            try:
-                # Извлекаем текст элемента
-                # Используем separator=' ' чтобы правильно обработать пробелы
-                title = item.get_text(separator=' ', strip=True)
-                if not title:
-                    continue
-
-                # Удаляем нумерацию в начале, если есть
-                title = self._clean_list_item_title(title)
-                
-                # Нормализуем пробелы (множественные пробелы -> один)
-                import re
                 title = re.sub(r'\s+', ' ', title)
                 # Убираем пробелы перед знаками препинания
                 title = re.sub(r'\s+([.,:;!?])', r'\1', title)
@@ -624,11 +722,9 @@ class CourseParser:
         Returns:
             Очищенное название
         """
-        # Удаляем нумерацию в начале (например, "1. ", "1) ", "1.1. ")
-        import re
-
-        title = re.sub(r"^\d+[\.\)]\s*", "", title)
+        # Удаляем нумерацию в начале (сначала «1.1.» / «1.1)», затем «1.» / «1)»)
         title = re.sub(r"^\d+\.\d+[\.\)]\s*", "", title)
+        title = re.sub(r"^\d+[\.\)]\s*", "", title)
         return title.strip()
 
     def extract_description(self, soup: BeautifulSoup) -> Optional[str]:

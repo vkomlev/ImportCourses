@@ -166,3 +166,62 @@ def write_courses_to_excel(courses: List[Dict[str, Any]], output_path: Optional[
     writer = ExcelWriter(output_path)
     writer.write_courses(courses)
     return writer.get_output_path()
+
+
+# Колонки для импорта материалов (docs/materials-import-template.md, materials-api.md)
+MATERIALS_COLUMNS = [
+    "course_uid",
+    "external_uid",
+    "title",
+    "type",
+    "url",
+    "description",
+    "caption",
+    "order_position",
+    "is_active",
+]
+
+
+def write_materials_to_excel(
+    materials: List[Dict[str, Any]], output_path: Optional[str] = None
+) -> str:
+    """
+    Запись материалов в XLSX для импорта в LMS (лист Materials).
+
+    Args:
+        materials: Список словарей с полями course_uid, external_uid, title, type, url, ...
+        output_path: Путь к файлу (если None — output/materials_<timestamp>.xlsx)
+
+    Returns:
+        Путь к созданному файлу
+    """
+    output_dir = Path(EXCEL_OUTPUT_DIR)
+    output_dir.mkdir(exist_ok=True)
+    if output_path is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = str(output_dir / f"materials_{timestamp}.xlsx")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Materials"
+
+    for col_idx, col_name in enumerate(MATERIALS_COLUMNS, start=1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.value = col_name
+        cell.font = Font(bold=True)
+
+    for row_idx, mat in enumerate(materials, start=2):
+        for col_idx, col_name in enumerate(MATERIALS_COLUMNS, start=1):
+            value = mat.get(col_name, "")
+            if col_name == "order_position" and value != "":
+                try:
+                    value = int(value)
+                except (ValueError, TypeError):
+                    value = ""
+            if value is None:
+                value = ""
+            ws.cell(row=row_idx, column=col_idx).value = value
+
+    wb.save(output_path)
+    logger.info(f"Файл материалов сохранен: {output_path}")
+    return output_path

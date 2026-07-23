@@ -28,6 +28,10 @@ H3_TAG = "h3"  # Тег для поиска подкурсов первого у
 GO_LINK_TEXT = "Перейти"  # Текст ссылки для перехода на страницу подкурса
 PLAN_SECTION_HEADER = "Краткий план раздела"  # Заголовок раздела с планом
 
+# Заголовки секций материалов на странице подкурса
+MATERIALS_HEADER_TEXT_LESSONS = "Текстовые уроки"
+MATERIALS_HEADER_VIDEO_LESSONS = "Видеоуроки"
+
 # Настройки Excel
 EXCEL_DEFAULT_FILENAME = "courses"
 EXCEL_OUTPUT_DIR = "output"

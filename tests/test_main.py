@@ -58,13 +58,15 @@ class TestParseCourses:
 
         mock_parser.parse_main_page.return_value = [mock_subcourse]
         mock_parser.parse_subcourse_page.return_value = []
+        mock_parser.parse_materials_sections.return_value = []
         mock_parser._fetch_page.return_value = None
         mock_parser.extract_description.return_value = None
 
         mock_generate_uid.side_effect = lambda title, parent: f"{parent}-{title.lower().replace(' ', '-')}"
 
-        courses = parse_courses("http://example.com", "MAIN-UID")
+        courses, materials = parse_courses("http://example.com", "MAIN-UID")
 
         assert len(courses) == 1
         assert courses[0]["title"] == "Основы Python"
         assert courses[0]["parent_course_uid"] == "MAIN-UID"
+        assert isinstance(materials, list)

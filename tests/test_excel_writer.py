@@ -7,36 +7,50 @@ from src.excel_writer import ExcelWriter, write_courses_to_excel
 from openpyxl import load_workbook
 
 
+def _safe_unlink(path):
+    """Удаление файла (на Windows файл может быть ещё занят)."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 class TestExcelWriter:
     """Тесты для класса ExcelWriter"""
 
     def test_init(self):
         """Тест инициализации writer"""
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            writer = ExcelWriter(tmp.name)
-            assert writer.output_path == tmp.name
+            path = tmp.name
+        try:
+            writer = ExcelWriter(path)
+            assert writer.output_path == path
             assert writer.workbook is not None
             assert writer.worksheet is not None
             writer.workbook.close()
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)
 
     def test_write_headers(self):
         """Тест записи заголовков"""
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            writer = ExcelWriter(tmp.name)
+            path = tmp.name
+        try:
+            writer = ExcelWriter(path)
             writer._write_headers()
-
-            # Проверяем заголовки
             assert writer.worksheet.cell(row=1, column=1).value == "course_uid"
             assert writer.worksheet.cell(row=1, column=2).value == "title"
             assert writer.worksheet.cell(row=1, column=1).font.bold is True
             writer.workbook.close()
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)
 
     def test_format_bool(self):
         """Тест форматирования булевых значений"""
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            writer = ExcelWriter(tmp.name)
+            path = tmp.name
+        try:
+            writer = ExcelWriter(path)
             assert writer._format_bool(True) == "true"
             assert writer._format_bool(False) == "false"
             assert writer._format_bool("true") == "true"
@@ -49,14 +63,16 @@ class TestExcelWriter:
             assert writer._format_bool("нет") == "false"
             assert writer._format_bool(None) == "false"
             writer.workbook.close()
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)
 
     def test_write_course(self):
         """Тест записи курса"""
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            writer = ExcelWriter(tmp.name)
+            path = tmp.name
+        try:
+            writer = ExcelWriter(path)
             writer._write_headers()
-
             course = {
                 "course_uid": "TEST-001",
                 "title": "Тестовый курс",
@@ -67,19 +83,19 @@ class TestExcelWriter:
                 "required_courses_uid": "",
                 "is_required": "false",
             }
-
             writer._write_course(course)
-
-            # Проверяем данные
             assert writer.worksheet.cell(row=2, column=1).value == "TEST-001"
             assert writer.worksheet.cell(row=2, column=2).value == "Тестовый курс"
             assert writer.worksheet.cell(row=2, column=4).value == "manual_check"
             writer.workbook.close()
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)
 
     def test_write_courses(self):
         """Тест записи списка курсов"""
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            path = tmp.name
+        try:
             courses = [
                 {
                     "course_uid": "TEST-001",
@@ -102,24 +118,19 @@ class TestExcelWriter:
                     "is_required": "false",
                 },
             ]
-
-            writer = ExcelWriter(tmp.name)
+            writer = ExcelWriter(path)
             writer.write_courses(courses)
-
-            # Проверяем, что файл создан
-            assert os.path.exists(tmp.name)
-
-            # Загружаем и проверяем содержимое
-            wb = load_workbook(tmp.name)
+            assert os.path.exists(path)
+            wb = load_workbook(path)
             ws = wb.active
-
             assert ws.cell(row=1, column=1).value == "course_uid"
             assert ws.cell(row=2, column=1).value == "TEST-001"
             assert ws.cell(row=3, column=1).value == "TEST-002"
-            assert ws.cell(row=3, column=5).value == "TEST-001"  # parent_course_uid
-            assert ws.cell(row=3, column=6).value == 1  # order_number
+            assert ws.cell(row=3, column=5).value == "TEST-001"
+            assert ws.cell(row=3, column=6).value == 1
             wb.close()
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)
 
 
 class TestWriteCoursesToExcelFunction:
@@ -141,8 +152,10 @@ class TestWriteCoursesToExcelFunction:
         ]
 
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            output_path = write_courses_to_excel(courses, tmp.name)
-            assert output_path == tmp.name
+            path = tmp.name
+        try:
+            output_path = write_courses_to_excel(courses, path)
+            assert output_path == path
             assert os.path.exists(output_path)
-            # Файл уже закрыт функцией write_courses_to_excel
-            os.unlink(tmp.name)
+        finally:
+            _safe_unlink(path)

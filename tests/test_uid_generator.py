@@ -18,7 +18,8 @@ class TestUIDGenerator:
         """Тест создания slug"""
         generator = UIDGenerator()
         assert generator.create_slug("Основы Python") == "osnovy-python"
-        assert generator.create_slug("Python для ЕГЭ") == "python-dlya-ege"
+        # «я» может давать "ya" (простая транслит) или "ja" (библиотека transliterate)
+        assert generator.create_slug("Python для ЕГЭ") in ("python-dlya-ege", "python-dlja-ege")
         assert generator.create_slug("Test 123") == "test-123"
         assert generator.create_slug("  Много   пробелов  ") == "mnogo-probelov"
 

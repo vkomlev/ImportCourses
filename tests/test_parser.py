@@ -2,7 +2,7 @@
 
 import pytest
 from bs4 import BeautifulSoup
-from src.parser import CourseParser, Subcourse
+from src.parser import CourseParser, RawMaterial, Subcourse
 
 
 class TestCourseParser:
@@ -70,6 +70,40 @@ class TestCourseParser:
         assert ol is not None
         assert ol.name == "ol"
 
+    def test_find_section_by_header(self):
+        """Поиск секции по заголовку (Текстовые уроки / Видеоуроки)"""
+        parser = CourseParser()
+        html = """
+        <div>
+            <h2>Текстовые уроки</h2>
+            <p><a href="/lesson1">Урок 1</a></p>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        section = parser._find_section_by_header(soup, "Текстовые уроки")
+        assert section is not None
+        assert section.get_text(strip=True) == "Текстовые уроки"
+
+    def test_parse_materials_sections(self):
+        """Извлечение материалов из секций Текстовые уроки и Видеоуроки"""
+        parser = CourseParser()
+        html = """
+        <div>
+            <h2>Текстовые уроки</h2>
+            <p><a href="https://example.com/lesson1">Урок 1</a></p>
+            <h2>Видеоуроки</h2>
+            <p><a href="https://example.com/video1">Видео 1</a></p>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        base = "https://example.com/page"
+        materials = parser.parse_materials_sections(soup, base)
+        assert len(materials) >= 1
+        text_mats = [m for m in materials if m.material_type == "text"]
+        video_mats = [m for m in materials if m.material_type == "video"]
+        assert any(m.title == "Урок 1" and m.url for m in text_mats)
+        assert any(m.title == "Видео 1" and m.url for m in video_mats)
+
 
 class TestSubcourse:
     """Тесты для структуры Subcourse"""
@@ -84,3 +118,14 @@ class TestSubcourse:
         assert subcourse.title == "Тест"
         assert subcourse.url == "http://example.com"
         assert subcourse.level == 1
+
+
+class TestRawMaterial:
+    """Тесты для структуры RawMaterial"""
+
+    def test_raw_material_creation(self):
+        """Создание RawMaterial"""
+        m = RawMaterial(title="Урок", url="https://example.com/1", material_type="text")
+        assert m.title == "Урок"
+        assert m.url == "https://example.com/1"
+        assert m.material_type == "text"
